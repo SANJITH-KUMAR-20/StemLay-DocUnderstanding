@@ -1,3 +1,5 @@
+import torch
+import math
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -25,3 +27,45 @@ class PatchEmbed(nn.Module):
 
         x = x.flatten(2).transpose(1, 2)
         return x
+
+
+class BBPositionalEncoding(nn.Module):
+
+    def __init__(self,max_size, embedding_dim):
+        super(BBPositionalEncoding,self).__init__()
+        self.max_size = max_size
+        self.embedding_dim = embedding_dim
+        pe = torch.zeros(max_size, embedding_dim)
+        position = torch.arange(0, max_size, dtype = torch.float).unsqueeze(1)
+        div_freq = torch.exp(torch.arange(0,embedding_dim,2).float() * -(math.log(10000.0) / embedding_dim))
+        pe[:, 0::2] = torch.sin(position * div_freq)
+        pe[0, 1::2] = torch.cos(position * div_freq)
+        self.pe = pe.unsqueeze(0)
+        self.register_buffer("pe", self.pe)
+
+    def forward(self, x):
+        return x + self.pe[:x.size(1)].detach()
+
+class BoundingBoxSpatialEmbeddingModel(nn.Module):
+    def __init__(self, embedding_dim, max_len=1000):
+        super(BoundingBoxSpatialEmbeddingModel, self).__init__()
+        self.max_len = max_len
+        self.positional_encoding = BBPositionalEncoding(embedding_dim, max_len)
+        self.embedding_layer = nn.Linear(4, embedding_dim)  
+        self.spatial_embedding_layer = nn.Linear(embedding_dim, embedding_dim)
+
+    def forward(self, bounding_boxes):
+        positional_encoded_boxes = self.positional_encoding(bounding_boxes)
+        embeddings = self.embedding_layer(positional_encoded_boxes)
+        spatial_embeddings = self.spatial_embedding_layer(embeddings)
+
+        return spatial_embeddings
+
+class BoundingBoxEmbed(nn.Module):
+    
+    def __init__(self, max_size = 40, embed_dim = 768):
+
+        self.max_size = max_size
+        self.embed_dim = embed_dim
+        self.conv1d = nn.Conv1d(max_size, embed_dim,kernel_size=(1,1),)
+
