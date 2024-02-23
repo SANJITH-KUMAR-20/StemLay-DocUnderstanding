@@ -7,7 +7,7 @@ class PatchEmbed(nn.Module):
     """ Image to Patch Embedding
     """
     def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
-        super().__init__()
+        super(PatchEmbed, self).__init__()
         img_size = (img_size, img_size)
         patch_size = (patch_size, patch_size)
         self.patch_shape = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
@@ -61,11 +61,27 @@ class BoundingBoxSpatialEmbeddingModel(nn.Module):
 
         return spatial_embeddings
 
-class BoundingBoxEmbed(nn.Module):
-    
-    def __init__(self, max_size = 40, embed_dim = 768):
 
-        self.max_size = max_size
-        self.embed_dim = embed_dim
-        self.conv1d = nn.Conv1d(max_size, embed_dim,kernel_size=(1,1),)
+
+class StemAttention(nn.Module):
+
+    def __init__(self,no_of_heads = 8, hid_dim = 512, attention_dropout = 0.1):
+        super(StemAttention , self).__init__()
+        self.hid_dim = hid_dim
+        self.no_of_heads = no_of_heads
+        self.attention_head_size = int(hid_dim / no_of_heads)
+        self.all_head_size = self.num_attention_heads * self.attention_head_size
+
+        self.query = nn.Linear(hid_dim, self.all_head_size)
+        self.key = nn.Linear(hid_dim, self.all_head_size)
+        self.value = nn.Linear(hid_dim, self.all_head_size)
+
+        self.dropout = nn.Dropout(attention_dropout)
+        # self.has_relative_attention_bias = config.has_relative_attention_bias
+        # self.has_spatial_attention_bias = config.has_spatial_attention_bias
+
+    def transpose_for_scores(self, x):
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        x = x.view(*new_x_shape)
+        return x.permute(0, 2, 1, 3)
 
