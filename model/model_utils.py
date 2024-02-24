@@ -80,7 +80,53 @@ class BoundingBoxSpatialEmbeddingModel(nn.Module):
 
         return spatial_embeddings
 
+class MultiHeadAttention(nn.Module):
+  def __init__(self,d_model,num_heads):
+    super(MultiHeadAttention,self).__init__()
+    self.d_model = d_model
+    self.num_heads = num_heads
+    self.head_dim = d_model//num_heads
+    self.qkv = nn.Linear(d_model,3*d_model)
+    self.linear_layer = nn.Linear(d_model,d_model)
 
+  def _scaled_Dot_Product_Attention(self,Q,K,V,mask = None):
+
+    d_k = Q.size()[-1]
+    scaled = torch.matmul(Q,K.transpose(-1,-2))/math.sqrt(d_k)
+
+    if mask:
+      scaled += mask
+    attention = F.softmax(scaled,dim = -1)
+    values = torch.matmul(attention, V)
+    return values,attention
+
+  def forward(self,x,mask = None):
+    batch_size,seq_len,d_model = x.size()
+    qkv = self.qkv(x)
+    qkv = qkv.reshape(batch_size, seq_len, self.num_heads, 3 * self.head_dim)
+    qkv = qkv.permute(0,2,1,3)
+    q,k,v = qkv.chunk(3,dim = -1)
+    values,attention = self._scaled_Dot_Product_Attention(q,k,v,mask = mask)
+    values = values.reshape(batch_size,seq_len,self.num_heads*self.head_dim)
+    out = self.linear_layer(values)
+    return out
+  
+class LayerNormalization(nn.Module):
+  def __init__(self,parameter_shape,eps = 1e-5):
+    super().__init__()
+    self.parameter_shape = parameter_shape
+    self.eps = eps
+    self.gamma = nn.Parameter(torch.ones(parameter_shape))
+    self.beta = nn.Parameter(torch.zeros(parameter_shape))
+
+  def forward(self,inputs):
+    dims = [-(i+1) for i in range(len(self.parameter_shape))]
+    mean = inputs.mean(dim = dims, keepdims = True)
+    var = ((inputs-mean)**2).mean(dim = dims, keepdim = True)
+    std = (var+self.eps).sqrt()
+    y = (inputs - mean) / std
+    out = self.gamma * y + self.beta
+    return out
 
 class StemAttention(nn.Module):
 
