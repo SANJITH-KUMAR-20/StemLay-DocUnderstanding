@@ -29,6 +29,25 @@ class PatchEmbed(nn.Module):
         return x
 
 
+class PatchProjection(nn.Module):
+
+    def __init__(self, batch_size, no_of_patches, embedding_dim, H, W):
+
+        self.batch_size = batch_size
+        self.no_of_patches = no_of_patches
+        self.embedding_dim = embedding_dim
+        self.H = H
+        self.W = W
+        self.projection = nn.Linear(H*W, embedding_dim)
+
+    def forward(self, x):
+        x = x.view(self.batch_size * self.no_of_patches, self.H, self.W)
+        x = x.reshape(self.no_of_patches, self.H* self.W)
+        embedding_output = self.projection(x)
+        embedding_output = embedding_output.view(self.no_of_patches,self.embedding_dim)
+        return embedding_output
+            
+
 class BBPositionalEncoding(nn.Module):
 
     def __init__(self,max_size, embedding_dim):
@@ -84,4 +103,3 @@ class StemAttention(nn.Module):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
         return x.permute(0, 2, 1, 3)
-
