@@ -6,7 +6,7 @@ import torch.nn.functional as F
 class PatchEmbed(nn.Module):
     """ Image to Patch Embedding
     """
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
+    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=16):
         super(PatchEmbed, self).__init__()
         img_size = (img_size, img_size)
         patch_size = (patch_size, patch_size)
@@ -16,6 +16,9 @@ class PatchEmbed(nn.Module):
         self.num_patches_w = self.patch_shape[0]
         self.num_patches_h = self.patch_shape[1]
 
+    def _get_h_w(self):
+      return self.num_patches_h, self.num_patches_w
+
     def forward(self, x, position_embedding=None):
         x = self.proj(x)
 
@@ -24,7 +27,7 @@ class PatchEmbed(nn.Module):
             Hp, Wp = x.shape[2], x.shape[3]
             position_embedding = F.interpolate(position_embedding, size=(Hp, Wp), mode='bicubic')
             x = x + position_embedding
-
+        print(x.shape)
         x = x.flatten(2).transpose(1, 2)
         return x
 
@@ -32,7 +35,7 @@ class PatchEmbed(nn.Module):
 class PatchProjection(nn.Module):
 
     def __init__(self, batch_size, no_of_patches, embedding_dim, H, W):
-
+        super(PatchProjection, self).__init__()
         self.batch_size = batch_size
         self.no_of_patches = no_of_patches
         self.embedding_dim = embedding_dim
@@ -46,7 +49,7 @@ class PatchProjection(nn.Module):
         embedding_output = self.projection(x)
         embedding_output = embedding_output.view(self.no_of_patches,self.embedding_dim)
         return embedding_output
-            
+
 
 class BBPositionalEncoding(nn.Module):
 
@@ -70,7 +73,7 @@ class BoundingBoxSpatialEmbeddingModel(nn.Module):
         super(BoundingBoxSpatialEmbeddingModel, self).__init__()
         self.max_len = max_len
         self.positional_encoding = BBPositionalEncoding(embedding_dim, max_len)
-        self.embedding_layer = nn.Linear(4, embedding_dim)  
+        self.embedding_layer = nn.Linear(4, embedding_dim)
         self.spatial_embedding_layer = nn.Linear(embedding_dim, embedding_dim)
 
     def forward(self, bounding_boxes):
@@ -110,7 +113,7 @@ class MultiHeadAttention(nn.Module):
     values = values.reshape(batch_size,seq_len,self.num_heads*self.head_dim)
     out = self.linear_layer(values)
     return out
-  
+
 class LayerNormalization(nn.Module):
   def __init__(self,parameter_shape,eps = 1e-5):
     super().__init__()
@@ -127,6 +130,36 @@ class LayerNormalization(nn.Module):
     y = (inputs - mean) / std
     out = self.gamma * y + self.beta
     return out
+
+class PoisitionwiseFeedForward(nn.Module):
+
+  def __init__(self, d_model, hidden, sequence_length, drop_prob = 0.1):
+    super(PoisitionwiseFeedForward,self).__init__()
+    self.linear1 = nn.Linear(d_model,hidden)
+    self.d_model = d_model
+    self.linear2 = nn.Linear(hidden,d_model)
+    self.relu = nn.ReLU()
+    self.dropout = nn.Dropout(p = drop_prob)
+    self.sequence_length = sequence_length
+
+  def _get_encoding(self):
+    pos = torch.arange(self.sequence_length, dtype = torch.float).reshape(self.sequence_length, 1)
+    i = torch.arange(0,self.d_model,2).float()
+    denominator = torch.pow(10000,2*i/self.d_model)
+    even_PE = torch.sin(pos/denominator)
+    odd_PE = torch.cos(pos/denominator)
+    stacked = torch.stack([even_PE,odd_PE],dim=2)
+    PE = torch.flatten(stacked,start_dim = 1,end_dim = 2)
+    return PE
+
+  def forward(self, x, encode = False):
+    if encode:
+      x = torch.add(self._get_encoding(),x)
+    x = self.linear1(x)
+    x = self.relu(x)
+    x = self.dropout(x)
+    x = self.linear2(x)
+    return x
 
 class StemAttention(nn.Module):
 
