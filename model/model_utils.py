@@ -1,5 +1,6 @@
 import torch
 import math
+import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -20,14 +21,14 @@ class PatchEmbed(nn.Module):
       return self.num_patches_h, self.num_patches_w
 
     def forward(self, x, position_embedding=None):
-        x = self.proj(x)
+        x = self.proj(x.float())
+        x = x.float()
 
         if position_embedding is not None:
             position_embedding = position_embedding.view(1, self.patch_shape[0], self.patch_shape[1], -1).permute(0, 3, 1, 2)
             Hp, Wp = x.shape[2], x.shape[3]
             position_embedding = F.interpolate(position_embedding, size=(Hp, Wp), mode='bicubic')
             x = x + position_embedding
-        print(x.shape)
         x = x.flatten(2).transpose(1, 2)
         return x
 
@@ -44,10 +45,11 @@ class PatchProjection(nn.Module):
         self.projection = nn.Linear(H*W, embedding_dim)
 
     def forward(self, x):
-        x = x.view(self.batch_size * self.no_of_patches, self.H, self.W)
-        x = x.reshape(self.no_of_patches, self.H* self.W)
+
+        # x = x.view(self.batch_size * self.no_of_patches, self.H, self.W)
+        x = x.reshape(self.batch_size * self.no_of_patches, self.H * self.W)
         embedding_output = self.projection(x)
-        embedding_output = embedding_output.view(self.no_of_patches,self.embedding_dim)
+        embedding_output = embedding_output.reshape(self.batch_size, self.no_of_patches,self.embedding_dim)
         return embedding_output
 
 
@@ -104,7 +106,11 @@ class MultiHeadAttention(nn.Module):
     return values,attention
 
   def forward(self,x,mask = None):
-    batch_size,seq_len,d_model = x.size()
+    try:
+      batch_size,seq_len,d_model = x.size()
+    except:
+      batch_size = 1
+      seq_len,d_model = x.size()
     qkv = self.qkv(x)
     qkv = qkv.reshape(batch_size, seq_len, self.num_heads, 3 * self.head_dim)
     qkv = qkv.permute(0,2,1,3)
